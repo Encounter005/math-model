@@ -2,14 +2,15 @@ paths:
   raw_samples: E/E题数据/E题数据/附件1-数据集原始多模态样本/MOSEI数据集部分原始视频-100条
   labels: E/E题数据/E题数据/附件1-数据集原始多模态样本/MOSEI数据集部分原始视频-100条/label-100.xlsx
   output: artifacts/question_1
+  model_cache: .hf-cache
 
 tools:
   ffmpeg: ffmpeg
   ffprobe: ffprobe
-  mfa: /home/encounter/.conda/envs/aligner/bin/mfa
   openface: /opt/openface/bin/FeatureExtraction
 
 models:
+  asr: openai/whisper-small.en
   text: distilbert-base-uncased
 
 audio:
@@ -19,5 +20,7 @@ audio:
   aperiodicity_mel_bands: 11
 
 alignment:
+  dtw_gap_penalty: 0.5
+  dtw_acceptance_threshold: 0.4
   max_positions: 50
   audio_sample_rate: 16000

@@ -2,11 +2,11 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Build reproducible, word-aligned features for all 100 raw videos using DistilBERT, PyWorld, OpenFace, and Montreal Forced Aligner (MFA), with output structurally compatible with `aligned_50.pkl`.
+**Goal:** Build reproducible, word-aligned features for all 100 raw videos using Whisper ASR plus dynamic time warping (DTW), DistilBERT, PyWorld, and OpenFace, with output structurally compatible with `aligned_50.pkl`.
 
-**Architecture:** Use the supplied manual transcript as the textual source. MFA produces word timestamps, which define the common sequence axis: DistilBERT provides word embeddings, while PyWorld/OpenFace frame features are overlap-weighted into each word interval. Each sample is padded or continuously pooled to 50 positions.
+**Architecture:** Use the supplied manual transcript as the textual source. Whisper produces timestamped English ASR words from each WAV. DTW aligns normalized ASR-word and manual-word sequences; each accepted mapping transfers its ASR time span to one manual word, defining the common sequence axis. DistilBERT provides manual-word embeddings, while PyWorld/OpenFace frame features are overlap-weighted into each transferred interval. Each sample is padded or continuously pooled to 50 positions.
 
-**Tech Stack:** Python 3.13 managed by uv, PyTorch, Transformers, PyWorld, NumPy, OpenPyXL, FFmpeg, MFA, OpenFace, Pytest, Ruff.
+**Tech Stack:** Python 3.13 managed by uv, PyTorch, Transformers (`openai/whisper-small.en`, `distilbert-base-uncased`), PyWorld, NumPy, OpenPyXL, FFmpeg, OpenFace, Pytest, Ruff.
 
 ---
 
@@ -26,11 +26,11 @@
 - Create: `configs/question_1.yaml`
 
 1. Add Python dependencies with `uv add`: `torch`, `transformers`, `pyworld`, `setuptools<81`, `numpy`, `openpyxl`, `pytest`, and `ruff`. PyWorld 0.3.5 imports the legacy `pkg_resources` module, so the setuptools cap is required.
-2. Keep external executable paths in `configs/question_1.yaml`; do not hard-code local paths in Python.
+2. Keep external executable paths, the `models.asr` Whisper identifier, and DTW gap/acceptance parameters in `configs/question_1.yaml`; do not hard-code local paths or alignment thresholds in Python.
 3. Run `uv sync` and `uv run python --version`.
 4. Run `uv run ruff check .` after source files exist.
 
-**Acceptance:** all Python packages are installed only in the project environment and the configuration records input/output roots plus `mfa` and `openface` executable paths.
+**Acceptance:** all Python packages are installed only in the project environment and the configuration records input/output roots, the Whisper model identifier, and the OpenFace executable path.
 
 ## Task 2: Validate External Tooling
 
@@ -39,12 +39,12 @@
 - Test: `tests/test_check_tools.py`
 
 1. Verify `ffmpeg` and `ffprobe` are callable.
-2. Verify MFA has an installed English acoustic model and dictionary.
+2. Verify the configured Whisper model identifier can be loaded by Transformers. The user has approved the initial `openai/whisper-small.en` model download.
 3. Verify that PyWorld imports from the project environment.
 4. Verify OpenFace `FeatureExtraction` can process a short MP4 and return frame timestamps plus all fields selected by `configs/openface_35.json`.
 5. Record executable versions and model versions in `artifacts/question_1/run_metadata.json`.
 
-**Acceptance:** the command exits nonzero with a useful missing-tool error; it exits zero only when all required tools and models are available.
+**Acceptance:** the command exits nonzero with a useful missing-tool or model-load error; it exits zero only when all required tools and models are available.
 
 ## Task 3: Build the Source Manifest
 
@@ -73,18 +73,20 @@
 
 **Acceptance:** WAV duration differs from MP4 duration by no more than one video frame interval, unless an exception is explicitly logged.
 
-## Task 5: Obtain Word-Level Timestamps
+## Task 5: Obtain Manual-Word Timestamps with ASR-DTW
 
 **Files:**
 - Create: `scripts/question_1/align_words.py`
 - Create: `tests/test_word_alignment.py`
 
-1. Normalize punctuation and whitespace for MFA input while retaining the unmodified supplied transcription.
-2. Run MFA against each extracted WAV and its supplied transcript.
-3. Parse word intervals and map normalized words back to original text positions.
-4. Mark, rather than discard, words without a valid interval.
+1. Load `openai/whisper-small.en` in inference mode and transcribe each extracted WAV with word timestamps.
+2. Normalize punctuation, apostrophes, and whitespace in both ASR and supplied manual words while retaining the unmodified supplied transcription.
+3. Build a DTW cost matrix from normalized-word strings using normalized Levenshtein distance, a deterministic gap penalty, and a monotonic path; do not force a mapping when its distance exceeds the configured acceptance threshold.
+4. Transfer the earliest ASR start and latest ASR end in each accepted DTW path segment to the corresponding original manual word.
+5. Mark, rather than discard, manual words with no accepted ASR mapping, invalid ASR timestamp, or rejected DTW cost.
+6. Write `artifacts/question_1/word_alignment.jsonl`, including ASR model identifier, ASR words and timestamps, DTW path/cost, original manual words, transferred intervals, and unmatched reasons.
 
-**Acceptance:** each valid alignment interval has `0 <= start < end <= duration`; the sidecar file reports all unmatched words and their reason.
+**Acceptance:** every source row has one sidecar record; each valid transferred interval has `0 <= start < end <= duration`; the sidecar records the ASR source indices and cost for every accepted manual-word mapping, plus all unmatched words and their reason.
 
 ## Task 6: Extract Word-Level Text Features
 
@@ -95,7 +97,7 @@
 1. Load `distilbert-base-uncased` in inference mode.
 2. Tokenize the supplied transcript with word-to-WordPiece mapping.
 3. Mean-pool WordPiece embeddings belonging to the same original word.
-4. Return a `(L, 768)` array and the token spans for the alignment sidecar file.
+4. Return a `(L, 768)` array and token spans keyed to the manual-word records in the ASR-DTW alignment sidecar file.
 
 **Acceptance:** every aligned word has a finite 768-dimensional feature vector; extractor parameters are never updated.
 
@@ -107,7 +109,7 @@
 
 1. Use PyWorld `dio` and `stonemask` to extract frame-level F0, then use `cheaptrick` and `d4c` for spectral envelope and aperiodicity.
 2. Assemble 74 dimensions per frame: log-F0, voiced flag, frame energy, 60 Mel-band spectral-envelope values, and 11 Mel-band aperiodicity values.
-3. For each word interval, compute an overlap-duration-weighted mean of covered audio frames.
+3. For each ASR-DTW manual-word interval, compute an overlap-duration-weighted mean of covered audio frames.
 4. Use zeros only for a documented missing or invalid interval and record the reason.
 
 **Acceptance:** a valid sample produces `(L, 74)` finite values and each output position records the contributing source-frame interval.
@@ -121,7 +123,7 @@
 
 1. Define the stable 35-dimensional mapping: 17 action-unit intensities, 6 head-pose values, 6 gaze values, and 6 landmark-derived geometry measures.
 2. Run OpenFace per MP4 and retain its frame timestamps and face-detection confidence.
-3. Apply the same overlap-duration-weighted aggregation into MFA word intervals.
+3. Apply the same overlap-duration-weighted aggregation into ASR-DTW manual-word intervals.
 4. Mark undetected-face frames and only produce a zero vector if no usable frame overlaps an interval.
 
 **Acceptance:** each valid sample produces `(L, 35)` finite values; the exact selected OpenFace columns and geometry formulas live in the JSON configuration.
@@ -132,7 +134,7 @@
 - Create: `scripts/question_1/build_aligned_50.py`
 - Create: `tests/test_aligned_50.py`
 
-1. Use the aligned words as the shared multimodal axis.
+1. Use ASR-DTW aligned manual words as the shared multimodal axis.
 2. For `L <= 50`, retain all positions and post-pad every modality with zero vectors.
 3. For `L > 50`, partition consecutive words into 50 nonempty spans and mean-pool each modality within its span; never truncate tail words.
 4. Populate all length fields with the number of valid positions and retain the original-to-pooled position map in `alignment.jsonl`.
@@ -147,9 +149,9 @@
 - Create: `artifacts/question_1/inspection/`
 
 1. Run tasks 3-9 on one short clip and one long clip before batch processing.
-2. Produce a table with the original text, aligned time interval, audio frame range, visual frame range, and final sequence position.
+2. Produce a table with the original text, ASR source words, DTW cost, aligned time interval, audio frame range, visual frame range, and final sequence position.
 3. Generate a compact visual timeline for manual inspection.
-4. Confirm that a selected word maps to its correct audio interval and video frames.
+4. Confirm that a selected manual word maps through its ASR-DTW path to the correct audio interval and video frames.
 
 **Acceptance:** manual inspection confirms alignment for both samples, including at least one pooled position if the long sample has more than 50 words.
 
@@ -177,11 +179,11 @@
 
 1. Validate ID uniqueness, tensor shapes, label correspondence, finite values, valid lengths, zero padding, and alignment-sidecar coverage.
 2. Summarize every sample's source duration, effective length, dimensions, pooled-word count, face-detection rate, and warnings.
-3. Save versions, model identifiers, configuration hashes, commands, and source hashes in metadata.
+3. Save versions, ASR and feature model identifiers, configuration hashes, commands, and source hashes in metadata.
 4. Run `uv run pytest` and `uv run ruff check scripts tests`.
 
 **Acceptance:** all tests pass; `feature_summary.csv` contains 100 rows and supplies the full-result table required by the problem statement.
 
 ## External Installation Gate
 
-MFA and OpenFace are external tools. Before Task 2, determine their installation method and storage location. Any command that installs system packages, writes outside this repository, or downloads model assets to a home-directory cache requires explicit user approval first.
+OpenFace is an external tool. `openai/whisper-small.en` is an external model asset. The user has approved the initial Whisper model download; do not install system packages or download further model assets without explicit approval.
