@@ -6,13 +6,17 @@ paths:
 tools:
   ffmpeg: ffmpeg
   ffprobe: ffprobe
-  mfa: mfa
-  octave: octave
-  openface: FeatureExtraction
-  covarep_root: ${COVAREP_ROOT}
+  mfa: /home/encounter/.conda/envs/aligner/bin/mfa
+  openface: /opt/openface/bin/FeatureExtraction
 
 models:
   text: distilbert-base-uncased
+
+audio:
+  feature_extractor: pyworld
+  frame_period_ms: 5.0
+  spectral_mel_bands: 60
+  aperiodicity_mel_bands: 11
 
 alignment:
   max_positions: 50
