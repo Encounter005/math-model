@@ -7,7 +7,14 @@ authors = [
     { name = "encounter005", email = "1624221574@qq.com" }
 ]
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "montreal-forced-aligner>=3.4.2",
+    "numpy>=2.5.3",
+    "openpyxl>=3.1.5",
+    "pyyaml>=6.0.3",
+    "torch>=2.14.0",
+    "transformers>=5.17.0",
+]
 
 [project.scripts]
 math-model = "math_model:main"
@@ -15,3 +22,7 @@ math-model = "math_model:main"
 [build-system]
 requires = ["uv_build>=0.12.17,<0.13.0"]
 build-backend = "uv_build"
+
+[[index]]
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+default = true
