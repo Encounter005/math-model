@@ -2,11 +2,11 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Build reproducible, word-aligned features for all 100 raw videos using DistilBERT, COVAREP, OpenFace, and Montreal Forced Aligner (MFA), with output structurally compatible with `aligned_50.pkl`.
+**Goal:** Build reproducible, word-aligned features for all 100 raw videos using DistilBERT, PyWorld, OpenFace, and Montreal Forced Aligner (MFA), with output structurally compatible with `aligned_50.pkl`.
 
-**Architecture:** Use the supplied manual transcript as the textual source. MFA produces word timestamps, which define the common sequence axis: DistilBERT provides word embeddings, and COVAREP/OpenFace frame features are overlap-weighted into each word interval. Each sample is padded or continuously pooled to 50 positions.
+**Architecture:** Use the supplied manual transcript as the textual source. MFA produces word timestamps, which define the common sequence axis: DistilBERT provides word embeddings, while PyWorld/OpenFace frame features are overlap-weighted into each word interval. Each sample is padded or continuously pooled to 50 positions.
 
-**Tech Stack:** Python 3.13 managed by uv, PyTorch, Transformers, NumPy, OpenPyXL, FFmpeg, MFA, COVAREP, OpenFace, Pytest, Ruff.
+**Tech Stack:** Python 3.13 managed by uv, PyTorch, Transformers, PyWorld, NumPy, OpenPyXL, FFmpeg, MFA, OpenFace, Pytest, Ruff.
 
 ---
 
@@ -25,12 +25,12 @@
 - Create: `uv.lock`
 - Create: `configs/question_1.yaml`
 
-1. Add Python dependencies with `uv add`: `torch`, `transformers`, `numpy`, `openpyxl`, `pytest`, and `ruff`.
+1. Add Python dependencies with `uv add`: `torch`, `transformers`, `pyworld`, `setuptools<81`, `numpy`, `openpyxl`, `pytest`, and `ruff`. PyWorld 0.3.5 imports the legacy `pkg_resources` module, so the setuptools cap is required.
 2. Keep external executable paths in `configs/question_1.yaml`; do not hard-code local paths in Python.
 3. Run `uv sync` and `uv run python --version`.
 4. Run `uv run ruff check .` after source files exist.
 
-**Acceptance:** all Python packages are installed only in the project environment and the configuration records input/output roots plus `mfa`, `covarep`, and `openface` executable paths.
+**Acceptance:** all Python packages are installed only in the project environment and the configuration records input/output roots plus `mfa` and `openface` executable paths.
 
 ## Task 2: Validate External Tooling
 
@@ -40,7 +40,7 @@
 
 1. Verify `ffmpeg` and `ffprobe` are callable.
 2. Verify MFA has an installed English acoustic model and dictionary.
-3. Verify COVAREP can process a short WAV and return 74 columns.
+3. Verify that PyWorld imports from the project environment.
 4. Verify OpenFace `FeatureExtraction` can process a short MP4 and return frame timestamps plus all fields selected by `configs/openface_35.json`.
 5. Record executable versions and model versions in `artifacts/question_1/run_metadata.json`.
 
@@ -99,14 +99,14 @@
 
 **Acceptance:** every aligned word has a finite 768-dimensional feature vector; extractor parameters are never updated.
 
-## Task 7: Extract and Aggregate Audio Features
+## Task 7: Extract and Aggregate PyWorld Audio Features
 
 **Files:**
 - Create: `scripts/question_1/extract_audio.py`
 - Create: `tests/test_audio_aggregation.py`
 
-1. Invoke COVAREP on each WAV using its documented 74-dimensional configuration.
-2. Parse frame timestamps or derive them from the configured hop length.
+1. Use PyWorld `dio` and `stonemask` to extract frame-level F0, then use `cheaptrick` and `d4c` for spectral envelope and aperiodicity.
+2. Assemble 74 dimensions per frame: log-F0, voiced flag, frame energy, 60 Mel-band spectral-envelope values, and 11 Mel-band aperiodicity values.
 3. For each word interval, compute an overlap-duration-weighted mean of covered audio frames.
 4. Use zeros only for a documented missing or invalid interval and record the reason.
 
@@ -184,4 +184,4 @@
 
 ## External Installation Gate
 
-MFA, COVAREP, and OpenFace are not currently available in the workspace. Before Task 2, determine their installation method and storage location. Any command that installs system packages, writes outside this repository, or downloads model assets to a home-directory cache requires explicit user approval first.
+MFA and OpenFace are external tools. Before Task 2, determine their installation method and storage location. Any command that installs system packages, writes outside this repository, or downloads model assets to a home-directory cache requires explicit user approval first.
