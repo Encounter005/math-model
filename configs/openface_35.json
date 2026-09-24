@@ -1,0 +1,20 @@
+{
+  "action_units": [
+    "AU01_r", "AU02_r", "AU04_r", "AU05_r", "AU06_r", "AU07_r",
+    "AU09_r", "AU10_r", "AU12_r", "AU14_r", "AU15_r", "AU17_r",
+    "AU20_r", "AU23_r", "AU25_r", "AU26_r", "AU45_r"
+  ],
+  "head_pose": ["pose_Rx", "pose_Ry", "pose_Rz", "pose_Tx", "pose_Ty", "pose_Tz"],
+  "gaze": ["gaze_0_x", "gaze_0_y", "gaze_0_z", "gaze_1_x", "gaze_1_y", "gaze_1_z"],
+  "geometry": [
+    {"name": "face_width", "formula": "distance(landmark_36, landmark_45)"},
+    {"name": "face_height", "formula": "distance(landmark_27, landmark_8)"},
+    {"name": "eye_distance", "formula": "distance(landmark_39, landmark_42)"},
+    {"name": "mouth_width", "formula": "distance(landmark_48, landmark_54)"},
+    {"name": "mouth_opening", "formula": "distance(landmark_51, landmark_57)"},
+    {"name": "brow_mouth_distance", "formula": "distance(landmark_27, landmark_51)"}
+  ],
+  "confidence_column": "confidence",
+  "timestamp_column": "timestamp",
+  "success_column": "success"
+}
