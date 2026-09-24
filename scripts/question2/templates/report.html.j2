@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Question 2: {{ route }}</title>
+  <style>
+    body { font-family: sans-serif; margin: 2rem; color: #1f2937; }
+    table { border-collapse: collapse; margin: 1rem 0 2rem; width: 100%; }
+    th, td { border: 1px solid #9ca3af; padding: .4rem; text-align: left; }
+    th { background: #e5e7eb; }
+  </style>
+</head>
+<body>
+  {% macro table(title, rows) -%}
+  <section>
+    <h2>{{ title }}</h2>
+    {% if rows %}
+    <table>
+      <thead><tr>{% for key in rows[0] %}<th>{{ key }}</th>{% endfor %}</tr></thead>
+      <tbody>{% for row in rows %}<tr>{% for key in rows[0] %}<td>{{ row.get(key, '') }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+    </table>
+    {% else %}<p>No records.</p>{% endif %}
+  </section>
+  {%- endmacro %}
+  <h1>Question 2: {{ route }}</h1>
+  <p>Literature status: {{ literature_status }}.</p>
+  {{ table('Seed Summary', summary) }}
+  {{ table('Route Loss History', route_losses) }}
+  {{ table('Competition Protocol', competition) }}
+  {{ table('Literature-Comparison Protocol: Random Position', literature_random) }}
+  {{ table('Literature-Comparison Protocol: Whole Modality', whole_modality) }}
+  {% if gating_diagnostics %}{{ table('Gating Diagnostics', gating_diagnostics) }}{% endif %}
+  <section>
+    <h2>Source Artifacts</h2>
+    <ul>{% for path in source_paths %}<li>{{ path }}</li>{% endfor %}</ul>
+  </section>
+</body>
+</html>

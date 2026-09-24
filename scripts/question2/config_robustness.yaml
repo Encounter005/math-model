@@ -1,0 +1,27 @@
+paths:
+  training_data: E/E题数据/E题数据/附件2-数据集特征文件/aligned_50.pkl
+  inference_dir: E/E题数据/E题数据/附件3-模态缺失特征样本/对齐版本
+  artifact_root: artifacts/question_2/robustness_v2
+  model_cache: .hf-cache/models--distilbert-base-uncased
+model:
+  hidden_dim: 128
+  entropy_temperature: 1.0
+training:
+  batch_size: 32
+  epochs: 30
+  learning_rate: 0.001
+  seeds: [42, 43, 44, 45, 46]
+  mask_protocol: competition
+masking:
+  competition_rates: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]
+  literature_rates: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+  positions: [front, middle, back]
+evaluation:
+  mae_tolerance: 0.01
+loss:
+  reconstruction_coefficient: 1.0
+  vat_coefficient: 0.1
+  missmodal_semantic_coefficient: 1.0
+  missmodal_distance_coefficient: 1.0
+  missmodal_geometry_coefficient: 1.0
+  missmodal_temperature: 0.1
