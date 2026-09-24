@@ -26,6 +26,7 @@ def render_route_report(route_dir: Path, route: str) -> Path:
     competition = _read_seed_rows(route_dir, "perturbation_metrics.csv", "competition")
     literature_random = _read_seed_rows(route_dir, "perturbation_metrics.csv", "literature_random")
     whole_modality = _read_seed_rows(route_dir, "whole_modality_metrics.csv")
+    gating_diagnostics = _read_seed_rows(route_dir, "gating_diagnostics.csv")
     route_losses = _read_history(route_dir)
     summary = _read_csv(route_dir / "summary.csv")
     output = route_dir / "report.html"
@@ -38,6 +39,7 @@ def render_route_report(route_dir: Path, route: str) -> Path:
             competition=competition,
             literature_random=literature_random,
             whole_modality=whole_modality,
+            gating_diagnostics=gating_diagnostics,
             route_losses=route_losses,
         ),
         encoding="utf-8",

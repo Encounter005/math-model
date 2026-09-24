@@ -26,10 +26,10 @@
   <p>Literature status: {{ literature_status }}.</p>
   {{ table('Seed Summary', summary) }}
   {{ table('Route Loss History', route_losses) }}
-  {{ table('Route Loss History', route_losses) }}
   {{ table('Competition Protocol', competition) }}
   {{ table('Literature-Comparison Protocol: Random Position', literature_random) }}
   {{ table('Literature-Comparison Protocol: Whole Modality', whole_modality) }}
+  {% if gating_diagnostics %}{{ table('Gating Diagnostics', gating_diagnostics) }}{% endif %}
   <section>
     <h2>Source Artifacts</h2>
     <ul>{% for path in source_paths %}<li>{{ path }}</li>{% endfor %}</ul>

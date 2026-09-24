@@ -1,11 +1,22 @@
 from __future__ import annotations
 
 import math
+import random
+from collections.abc import Sequence
 from typing import Any
 
 import torch
 
 MODALITIES = ("text", "audio", "vision")
+COMPETITION_SUBSETS = (
+    ("T", ("text",)),
+    ("A", ("audio",)),
+    ("V", ("vision",)),
+    ("TA", ("text", "audio")),
+    ("TV", ("text", "vision")),
+    ("AV", ("audio", "vision")),
+    ("TAV", MODALITIES),
+)
 
 
 def apply_contiguous_mask(
@@ -29,6 +40,21 @@ def apply_contiguous_mask(
             start = {"front": 0, "middle": (len(valid) - count) // 2, "back": len(valid) - count}[position]
             artificial[modality][index, valid[start : start + count]] = True
     return _result(masks, artificial, "competition", {"rate": rate, "position": position, "seed": seed})
+
+
+def sample_competition_mask(
+    masks: dict[str, torch.Tensor], rates: Sequence[float], positions: Sequence[str], seed: int
+) -> dict[str, Any]:
+    """Sample one reproducible competition-protocol condition."""
+    if not rates or not positions:
+        raise ValueError("Competition rates and positions must not be empty")
+    generator = random.Random(seed)
+    modalities, selected = generator.choice(COMPETITION_SUBSETS)
+    rate = generator.choice(rates)
+    position = generator.choice(positions)
+    result = apply_contiguous_mask(masks, selected, rate, position, seed)
+    result["condition"]["modalities"] = modalities
+    return result
 
 
 def apply_random_mask(

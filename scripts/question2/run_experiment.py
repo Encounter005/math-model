@@ -14,6 +14,7 @@ if __package__ in {None, ""}:
 
 from scripts.question2.artifacts import (
     append_progress,
+    write_competition_summary,
     write_route_summary,
     write_seed_artifacts,
 )
@@ -29,7 +30,7 @@ from scripts.question2.models import (
     ReconstructionModel,
 )
 from scripts.question2.report import render_route_report
-from scripts.question2.training import predict, train_and_evaluate
+from scripts.question2.training import fix_seed, predict, train_and_evaluate
 
 ROUTES = ("reconstruction", "gated_fusion", "missmodal_alignment")
 PATH_KEYS = ("training_data", "inference_dir", "artifact_root", "model_cache")
@@ -85,11 +86,14 @@ def run_route(route: str, config: dict[str, Any], seed: int | None = None, resum
             _validate_resume_checkpoint(route_dir / f"seed_{current_seed}" / "checkpoint_last.pt")
         summaries.append(run_seed(route, config, current_seed, resume))
     write_route_summary(route_dir, summaries)
+    if all((route_dir / f"seed_{current_seed}" / "perturbation_metrics.csv").is_file() for current_seed in seeds):
+        write_competition_summary(route_dir, seeds)
     return render_route_report(route_dir, route)
 
 
 def run_seed(route: str, config: dict[str, Any], seed: int, resume: bool) -> dict[str, float | int | None]:
     """Run one labelled attachment-2 seed and final unlabelled attachment-3 inference."""
+    fix_seed(seed)
     datasets = load_training_datasets(Path(config["paths"]["training_data"]))
     inference_dataset = load_inference_dataset(Path(config["paths"]["inference_dir"]))
     batch_size = int(config["training"]["batch_size"])

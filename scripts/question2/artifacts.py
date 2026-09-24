@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import json
 import platform
+import statistics
 import sys
 from collections.abc import Iterable, Mapping
 from pathlib import Path
@@ -36,6 +37,8 @@ def write_seed_artifacts(
     ] + [{"protocol": "literature_random", **row} for row in result["literature_random_metrics"]]
     _write_csv(seed_dir / "perturbation_metrics.csv", perturbations)
     _write_csv(seed_dir / "whole_modality_metrics.csv", result["whole_modality_metrics"])
+    if "gating_diagnostics" in result:
+        _write_csv(seed_dir / "gating_diagnostics.csv", result["gating_diagnostics"])
     _write_masks(seed_dir / "masks_validation.npz", result["validation_masks"])
     _write_csv(seed_dir / "test_predictions.csv", test_predictions)
     torch.save(result["checkpoint_best"], seed_dir / "checkpoint_best.pt")
@@ -58,6 +61,49 @@ def write_route_summary(route_dir: Path, rows: Iterable[Mapping[str, Any]]) -> P
     path = route_dir / "summary.csv"
     _write_csv(path, rows)
     return path
+
+
+def write_competition_summary(route_dir: Path, seeds: Iterable[int]) -> Path:
+    """Aggregate each seed's 147 competition conditions before cross-seed statistics."""
+    per_seed = []
+    for seed in seeds:
+        rows = _read_csv(route_dir / f"seed_{seed}" / "perturbation_metrics.csv")
+        competition = [row for row in rows if row.get("protocol") == "competition"]
+        if not competition:
+            raise ValueError(f"No competition metrics for seed {seed}")
+        if len(competition) != 147:
+            raise ValueError(f"Expected 147 competition conditions for seed {seed}, found {len(competition)}")
+        per_seed.append({
+            "seed": seed,
+            **{
+                metric: statistics.fmean(float(row[metric]) for row in competition)
+                for metric in ("weighted_f1", "macro_f1", "mae", "pearson")
+            },
+        })
+    summary = {
+        "seed_count": len(per_seed),
+        **{
+            f"{metric}_mean": statistics.fmean(row[metric] for row in per_seed)
+            for metric in ("weighted_f1", "macro_f1", "mae", "pearson")
+        },
+        **{
+            f"{metric}_std": statistics.stdev(row[metric] for row in per_seed)
+            if len(per_seed) > 1
+            else 0.0
+            for metric in ("weighted_f1", "macro_f1", "mae", "pearson")
+        },
+    }
+    path = route_dir / "competition_summary.csv"
+    _write_csv(path, [summary])
+    _write_csv(route_dir / "competition_seed_means.csv", per_seed)
+    return path
+
+
+def _read_csv(path: Path) -> list[dict[str, str]]:
+    if not path.exists() or not path.stat().st_size:
+        return []
+    with path.open(newline="", encoding="utf-8") as file:
+        return list(csv.DictReader(file))
 
 
 def environment_manifest() -> dict[str, Any]:

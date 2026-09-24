@@ -14,6 +14,7 @@ from scripts.question2.masking import (
     apply_contiguous_mask,
     apply_random_mask,
     apply_whole_modality_mask,
+    sample_competition_mask,
 )
 from scripts.question2.metrics import compute_metrics
 
@@ -67,7 +68,13 @@ def train_and_evaluate(
         losses: list[dict[str, float]] = []
         for batch_index, raw_batch in enumerate(train_loader):
             batch = _to_device(raw_batch, device)
-            masks = _training_masks(batch, seed + epoch * 10_000 + batch_index)
+            masks = _training_masks(
+                batch,
+                seed + epoch * 10_000 + batch_index,
+                config["masking"]["competition_rates"],
+                config["masking"]["positions"],
+                config["training"].get("mask_protocol", "fixed"),
+            )["artificial_masks"]
             optimizer.zero_grad()
             loss_terms = _loss_terms(model, route, batch, masks, class_weights, config)
             loss_terms["loss"].backward()
@@ -177,6 +184,7 @@ def evaluate_perturbations(
     competition: list[dict[str, Any]] = []
     literature_random: list[dict[str, Any]] = []
     whole_modality: list[dict[str, Any]] = []
+    gating_diagnostics: list[dict[str, Any]] = []
     masks: dict[str, dict[str, torch.Tensor]] = {}
     index = 0
     for modalities in _modality_subsets(include_all=True):
@@ -223,12 +231,17 @@ def evaluate_perturbations(
         key = f"literature-whole-{subset}"
         whole_modality.append({"subset": subset, **result["metrics"]})
         masks[key] = result["masks"]
-    return {
+        if route == "gated_fusion" and subset in {"V", "AV"}:
+            gating_diagnostics.extend({"subset": subset, **row} for row in result["predictions"])
+    perturbations = {
         "competition_metrics": competition,
         "literature_random_metrics": literature_random,
         "whole_modality_metrics": whole_modality,
         "validation_masks": masks,
     }
+    if route == "gated_fusion":
+        perturbations["gating_diagnostics"] = gating_diagnostics
+    return perturbations
 
 
 @torch.no_grad()
@@ -280,6 +293,7 @@ def _evaluate_masked_batches(
             [row["regression_label"] for row in rows], [row["regression_prediction"] for row in rows],
         ),
         "masks": {name: torch.cat(values).numpy() for name, values in collected_masks.items()},
+        "predictions": rows,
     }
 
 
@@ -316,8 +330,27 @@ def _loss_terms(
     return terms
 
 
-def _training_masks(batch: dict[str, Any], seed: int) -> dict[str, torch.Tensor]:
-    return apply_contiguous_mask(batch, MODALITIES, 0.3, "middle", seed)["artificial_masks"]
+def _training_masks(
+    batch: dict[str, Any],
+    seed: int,
+    rates: tuple[float, ...] | list[float],
+    positions: tuple[str, ...] | list[str],
+    protocol: str = "competition",
+) -> dict[str, Any]:
+    if protocol == "none":
+        original_masks = {name: batch[f"{name}_mask"].bool().clone() for name in MODALITIES}
+        return {
+            "original_masks": original_masks,
+            "artificial_masks": _empty_masks(batch),
+            "observed_masks": {name: mask.clone() for name, mask in original_masks.items()},
+            "protocol": "complete_view",
+            "condition": {"mask_protocol": "none", "seed": seed},
+        }
+    if protocol == "competition":
+        return sample_competition_mask(batch, rates, positions, seed)
+    if protocol == "fixed":
+        return apply_contiguous_mask(batch, MODALITIES, 0.3, "middle", seed)
+    raise ValueError(f"Unsupported training mask protocol: {protocol}")
 
 
 def _observed_batch(batch: dict[str, Any], masks: dict[str, torch.Tensor]) -> dict[str, Any]:
