@@ -121,6 +121,8 @@ def probe_video(path: Path) -> tuple[float, float]:
             "ffprobe",
             "-v",
             "error",
+            "-select_streams",
+            "v:0",
             "-show_entries",
             "format=duration:stream=avg_frame_rate",
             "-of",
@@ -131,6 +133,6 @@ def probe_video(path: Path) -> tuple[float, float]:
         capture_output=True,
         text=True,
     )
-    duration, frame_rate = result.stdout.splitlines()
+    frame_rate, duration = result.stdout.splitlines()
     numerator, denominator = frame_rate.split("/")
     return float(duration), float(numerator) / float(denominator)

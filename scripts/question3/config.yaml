@@ -3,7 +3,7 @@ paths:
   attachment4_dir: E/E题数据/E题数据/附件4-可解释专项视频样本与特征文件/附件4-可解释专项视频样本与特征文件/对齐版本
   video_dir: E/E题数据/E题数据/附件4-可解释专项视频样本与特征文件/附件4-可解释专项视频样本与特征文件/对齐版本/videos
   artifact_root: artifacts/question_3
-  model_cache: .hf-cache/hub/models--distilbert-base-uncased
+  model_cache: .hf-cache/hub/models--bert-base-uncased
 training:
   batch_size: 32
   epochs: 35

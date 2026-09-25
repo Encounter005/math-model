@@ -63,29 +63,32 @@ def load_attachment4_dataset(directory: Path) -> Question3Dataset:
 def _load_attachment4_sample(path: Path) -> dict[str, Any]:
     with path.open("rb") as file:
         payload = pickle.load(file)
-    if not isinstance(payload, dict) or not isinstance(payload.get("test"), dict):
-        raise TypeError(f"Expected a test payload in {path}")
+    if not isinstance(payload, dict):
+        raise TypeError(f"Expected a sample payload in {path}")
 
-    sample = payload["test"]
+    sample = payload.get("test", payload)
+    if not isinstance(sample, dict):
+        raise TypeError(f"Expected a sample payload in {path}")
     required = ("text_bert", "audio", "vision", "raw_text")
     missing = [key for key in required if key not in sample]
     if missing:
         raise ValueError(f"Missing required fields in {path}: {', '.join(missing)}")
-    if any(len(sample[key]) != 1 for key in required):
+    wrapped = "test" in payload
+    if wrapped and any(len(sample[key]) != 1 for key in required):
         raise ValueError(f"Expected exactly one sample in {path}")
 
-    text_bert = np.asarray(sample["text_bert"][0])
-    audio = np.asarray(sample["audio"][0])
-    vision = np.asarray(sample["vision"][0])
-    if text_bert.shape != (2, 50):
-        raise ValueError(f"Expected text_bert shape (2, 50) in {path}, got {text_bert.shape}")
+    text_bert = np.asarray(sample["text_bert"][0] if wrapped else sample["text_bert"])
+    audio = np.asarray(sample["audio"][0] if wrapped else sample["audio"])
+    vision = np.asarray(sample["vision"][0] if wrapped else sample["vision"])
+    if text_bert.ndim != 2 or text_bert.shape[0] < 2 or text_bert.shape[1] != 50:
+        raise ValueError(f"Expected text_bert shape (*, 50) in {path}, got {text_bert.shape}")
     if audio.shape != (50, 74):
         raise ValueError(f"Expected audio shape (50, 74) in {path}, got {audio.shape}")
     if vision.shape != (50, 35):
         raise ValueError(f"Expected vision shape (50, 35) in {path}, got {vision.shape}")
     return {
         "id": path.stem,
-        "raw_text": sample["raw_text"][0],
+        "raw_text": sample["raw_text"][0] if wrapped else sample["raw_text"],
         "text_bert": text_bert,
         "audio": audio,
         "vision": vision,

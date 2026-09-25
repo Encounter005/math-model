@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import json
 import random
+import time
 from collections.abc import Iterable, Mapping
 from typing import Any
 
@@ -46,6 +47,9 @@ def train(
     class_weights = _class_weights(train_loader, device)
     history: list[dict[str, float | int | None]] = []
     best_state: dict[str, torch.Tensor] | None = None
+    started = time.monotonic()
+    batches = len(train_loader)
+    total_steps = batches * int(config["training"]["epochs"])
     for epoch in range(1, int(config["training"]["epochs"]) + 1):
         model.train()
         losses = []
@@ -82,6 +86,14 @@ def train(
             terms["loss"].backward()
             optimizer.step()
             losses.append(float(terms["loss"].detach()))
+            completed = (epoch - 1) * batches + batch_index + 1
+            elapsed = time.monotonic() - started
+            eta = elapsed * (total_steps - completed) / completed
+            print(
+                f"epoch {epoch}/{config['training']['epochs']} batch {batch_index + 1}/{batches} "
+                f"loss {losses[-1]:.4f} eta {int(eta) // 60:02d}:{int(eta) % 60:02d}",
+                flush=True,
+            )
         validation = evaluate(model, valid_loader, device)
         record = {
             "epoch": epoch,
@@ -155,8 +167,29 @@ def write_seed_artifacts(
     (directory / "validation_predictions.json").write_text(
         json.dumps(result["validation"]["predictions"]) + "\n", encoding="utf-8"
     )
+    (directory / "report.html").write_text(_report_html(result), encoding="utf-8")
     torch.save(result["checkpoint_best"], directory / "checkpoint_best.pt")
     torch.save(result["checkpoint_last"], directory / "checkpoint_last.pt")
+
+
+def _report_html(result: Mapping[str, Any]) -> str:
+    def table(rows: list[Mapping[str, Any]]) -> str:
+        fields = list(dict.fromkeys(key for row in rows for key in row))
+        header = "".join(f"<th>{field}</th>" for field in fields)
+        body = "".join(
+            "<tr>"
+            + "".join(f"<td>{row.get(field, '')}</td>" for field in fields)
+            + "</tr>"
+            for row in rows
+        )
+        return f"<table><tr>{header}</tr>{body}</table>"
+
+    return (
+        "<!doctype html><meta charset=utf-8><title>Question 3 report</title><style>body{font-family:sans-serif;margin:2rem}table{border-collapse:collapse;margin-bottom:2rem}td,th{border:1px solid #bbb;padding:.4rem;text-align:left}</style><h1>Question 3 training report</h1><h2>Epoch metrics</h2>"
+        + table(result["history"])
+        + "<h2>Validation predictions</h2>"
+        + table(result["validation"]["predictions"])
+    )
 
 
 def _class_weights(

@@ -5,6 +5,7 @@ from torch import nn
 from scripts.question3.explain import (
     explain_modalities,
     explain_windows,
+    probe_video,
     video_interval,
 )
 
@@ -54,3 +55,16 @@ def test_aligned_interval_to_video_metadata():
         "frame_start": 50,
         "frame_end": 74,
     }
+
+
+def test_probe_video_uses_the_video_stream_rate_when_audio_is_present(
+    tmp_path, monkeypatch
+):
+    video = tmp_path / "01.mp4"
+    video.touch()
+    monkeypatch.setattr(
+        "scripts.question3.explain.subprocess.run",
+        lambda *args, **kwargs: type("Result", (), {"stdout": "30/1\n9.0\n"})(),
+    )
+
+    assert probe_video(video) == (9.0, 30.0)

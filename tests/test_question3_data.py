@@ -48,6 +48,21 @@ def test_load_attachment4_aligned_samples_keeps_sorted_ids_and_raw_text(tmp_path
     assert dataset[0]["audio"].shape == (50, 74)
 
 
+def test_load_attachment4_flat_sample_payload(tmp_path):
+    payload = _payload("flat sample")["test"]
+    payload["id"] = "01"
+    for key in ("text_bert", "audio", "vision"):
+        payload[key] = payload[key][0]
+    payload["raw_text"] = "flat sample"
+    with (tmp_path / "01.pkl").open("wb") as file:
+        pickle.dump(payload, file)
+
+    dataset = load_attachment4_dataset(tmp_path)
+
+    assert dataset.ids == ["01"]
+    assert dataset[0]["raw_text"] == "flat sample"
+
+
 def test_collate_keeps_raw_text_as_a_list():
     batch = collate_question3_samples(
         [_sample("01", "first"), _sample("02", "second")]
