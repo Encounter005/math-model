@@ -49,7 +49,7 @@ def train_and_evaluate(
     progress_callback: Callable[[dict[str, float | int]], None] | None = None,
 ) -> dict[str, Any]:
     """Train one route on attachment 2 and evaluate controlled validation masks."""
-    if route not in {"reconstruction", "gated_fusion", "missmodal_alignment"}:
+    if route not in {"reconstruction", "gated_fusion", "missmodal_alignment", "self_distillation"}:
         raise ValueError(f"Unsupported route: {route}")
     fix_seed(seed)
     device = torch.device(device)
@@ -68,13 +68,22 @@ def train_and_evaluate(
         losses: list[dict[str, float]] = []
         for batch_index, raw_batch in enumerate(train_loader):
             batch = _to_device(raw_batch, device)
+            mask_seed = seed + epoch * 10_000 + batch_index
             masks = _training_masks(
                 batch,
-                seed + epoch * 10_000 + batch_index,
+                mask_seed,
                 config["masking"]["competition_rates"],
                 config["masking"]["positions"],
                 config["training"].get("mask_protocol", "fixed"),
             )["artificial_masks"]
+            if route == "self_distillation":
+                masks = _training_view_masks(
+                    batch,
+                    mask_seed,
+                    config["masking"]["competition_rates"],
+                    config["masking"]["positions"],
+                    config["training"].get("mask_protocol", "fixed"),
+                )
             optimizer.zero_grad()
             loss_terms = _loss_terms(model, route, batch, masks, class_weights, config)
             loss_terms["loss"].backward()
@@ -302,6 +311,8 @@ def _outputs(model: nn.Module, route: str, batch: dict[str, Any], masks: dict[st
         return model(batch, masks)
     if route == "gated_fusion":
         return model(_observed_batch(batch, masks))
+    if route == "self_distillation":
+        return model(batch, [masks, masks])["fused"]
     outputs = model(batch, [masks])
     return outputs["incomplete"][0] if any(mask.any() for mask in masks.values()) else outputs["complete"]
 
@@ -310,13 +321,21 @@ def _loss_terms(
     model: nn.Module,
     route: str,
     batch: dict[str, Any],
-    masks: dict[str, torch.Tensor],
+    masks: dict[str, torch.Tensor] | list[dict[str, torch.Tensor]],
     class_weights: torch.Tensor,
     config: Mapping[str, Any],
 ) -> dict[str, torch.Tensor]:
+    if route == "self_distillation":
+        view_masks = masks if isinstance(masks, list) else [masks, masks]
+        outputs = model(batch, view_masks)
+        return model.self_distillation_losses(outputs, batch["class_label"], batch["regression_label"], class_weights)
     if route == "missmodal_alignment":
+        if isinstance(masks, list):
+            raise TypeError("MissModal alignment accepts one artificial mask")
         outputs = model(batch, [masks])
         return model.alignment_losses(outputs, batch["class_label"], batch["regression_label"], class_weights)
+    if isinstance(masks, list):
+        raise TypeError(f"{route} accepts one artificial mask")
     outputs = _outputs(model, route, batch, masks)
     terms = model.supervised_loss(outputs, batch["class_label"], batch["regression_label"], class_weights)
     if route == "reconstruction":
@@ -351,6 +370,26 @@ def _training_masks(
     if protocol == "fixed":
         return apply_contiguous_mask(batch, MODALITIES, 0.3, "middle", seed)
     raise ValueError(f"Unsupported training mask protocol: {protocol}")
+
+
+def _training_view_masks(
+    batch: dict[str, Any],
+    seed: int,
+    rates: tuple[float, ...] | list[float],
+    positions: tuple[str, ...] | list[str],
+    protocol: str = "competition",
+) -> list[dict[str, torch.Tensor]]:
+    """Generate two reproducible, heterogeneous training views when possible."""
+    first = _training_masks(batch, seed, rates, positions, protocol)
+    first_condition = {key: value for key, value in first["condition"].items() if key != "seed"}
+    second = first
+    for offset in range(1, 148):
+        candidate = _training_masks(batch, seed + offset, rates, positions, protocol)
+        condition = {key: value for key, value in candidate["condition"].items() if key != "seed"}
+        second = candidate
+        if condition != first_condition:
+            break
+    return [first["artificial_masks"], second["artificial_masks"]]
 
 
 def _observed_batch(batch: dict[str, Any], masks: dict[str, torch.Tensor]) -> dict[str, Any]:

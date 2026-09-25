@@ -227,6 +227,91 @@ class GatedFusionModel(SharedBackbone):
         return entropy / math.log(max(states.shape[-1], 2))
 
 
+class SelfDistillationModel(SharedBackbone):
+    """UMDF-style consistency training over two masked views with shared encoders."""
+
+    def __init__(
+        self,
+        text_encoder: nn.Module,
+        audio_dim: int = 74,
+        vision_dim: int = 35,
+        hidden_dim: int = 128,
+        mmd_coefficient: float = 0.1,
+        classification_coefficient: float = 0.2,
+        regression_coefficient: float = 0.2,
+        temperature: float = 1.0,
+        mmd_bandwidth: float = 1.0,
+    ) -> None:
+        super().__init__(text_encoder, audio_dim, vision_dim, hidden_dim)
+        if temperature <= 0 or mmd_bandwidth <= 0:
+            raise ValueError("Self-distillation temperature and MMD bandwidth must be positive")
+        self.mmd_coefficient = mmd_coefficient
+        self.classification_coefficient = classification_coefficient
+        self.regression_coefficient = regression_coefficient
+        self.temperature = temperature
+        self.mmd_bandwidth = mmd_bandwidth
+        self.fusion_gate = nn.Linear(2 * hidden_dim, 1)
+
+    def forward(self, batch: dict[str, torch.Tensor], artificial_masks: list[dict[str, torch.Tensor]]) -> dict[str, Any]:
+        if len(artificial_masks) != 2:
+            raise ValueError("Self-distillation requires exactly two masked views")
+        states = self.project_states(batch)
+        original_masks = torch.stack(tuple(batch[f"{name}_mask"] for name in MODALITIES), dim=1).bool()
+        views = []
+        for masks in artificial_masks:
+            artificial = torch.stack(tuple(masks[name] for name in MODALITIES), dim=1).bool()
+            views.append(self._view(states, original_masks & ~artificial))
+        first, second = views
+        gate = torch.sigmoid(self.fusion_gate(torch.cat((first["fused_representation"], second["fused_representation"]), dim=-1)))
+        fused = gate * first["fused_representation"] + (1 - gate) * second["fused_representation"]
+        return {"views": views, "fused": self.predict(fused)}
+
+    def self_distillation_losses(
+        self,
+        outputs: dict[str, Any],
+        class_labels: torch.Tensor,
+        regression_labels: torch.Tensor,
+        class_weights: torch.Tensor | None = None,
+    ) -> dict[str, torch.Tensor]:
+        first, second = outputs["views"]
+        task = self.supervised_loss(outputs["fused"], class_labels, regression_labels, class_weights)["loss"]
+        mmd = self._mmd(first["fused_representation"], second["fused_representation"])
+        probabilities = [functional.softmax(view["classification_logits"] / self.temperature, dim=-1) for view in (first, second)]
+        midpoint = (probabilities[0] + probabilities[1]) / 2
+        classification = sum(
+            functional.kl_div(midpoint.clamp_min(torch.finfo(midpoint.dtype).eps).log(), probability, reduction="batchmean")
+            for probability in probabilities
+        ) / 2
+        regression = functional.mse_loss(first["regression_prediction"], second["regression_prediction"])
+        loss = task + self.mmd_coefficient * mmd + self.classification_coefficient * classification + self.regression_coefficient * regression
+        return {
+            "loss": loss,
+            "task_loss": task,
+            "mmd_loss": mmd,
+            "classification_consistency_loss": classification,
+            "regression_consistency_loss": regression,
+        }
+
+    def _view(self, states: torch.Tensor, masks: torch.Tensor) -> dict[str, torch.Tensor]:
+        pooled = torch.stack(
+            tuple(masked_temporal_mean(states[:, index], masks[:, index]) for index in range(len(MODALITIES))), dim=1
+        )
+        available = masks.any(dim=-1).unsqueeze(-1)
+        fused = (pooled * available).sum(dim=1) / available.sum(dim=1).clamp_min(1)
+        return self.predict(fused)
+
+    def _mmd(self, first: torch.Tensor, second: torch.Tensor) -> torch.Tensor:
+        if len(first) < 2:
+            return first.sum() * 0
+        first = functional.normalize(first, dim=-1)
+        second = functional.normalize(second, dim=-1)
+
+        def kernel(left: torch.Tensor, right: torch.Tensor) -> torch.Tensor:
+            return torch.exp(-torch.cdist(left, right).square() / (2 * self.mmd_bandwidth**2))
+
+        return kernel(first, first).mean() + kernel(second, second).mean() - 2 * kernel(first, second).mean()
+
+
 def _masked_softmax(values: torch.Tensor, available: torch.Tensor) -> torch.Tensor:
     """Normalize only available modalities, returning all-zero for empty rows."""
     masked = values.masked_fill(~available, -torch.inf)

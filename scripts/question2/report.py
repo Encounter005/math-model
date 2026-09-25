@@ -10,6 +10,7 @@ LITERATURE_STATUS = {
     "reconstruction": "TgRN latent adaptation",
     "gated_fusion": "AGFN local-missing extension",
     "missmodal_alignment": "MissModal local-block extension",
+    "self_distillation": "UMDF contiguous-block self-distillation",
 }
 
 

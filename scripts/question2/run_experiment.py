@@ -28,11 +28,12 @@ from scripts.question2.models import (
     GatedFusionModel,
     MissModalAlignmentModel,
     ReconstructionModel,
+    SelfDistillationModel,
 )
 from scripts.question2.report import render_route_report
 from scripts.question2.training import fix_seed, predict, train_and_evaluate
 
-ROUTES = ("reconstruction", "gated_fusion", "missmodal_alignment")
+ROUTES = ("reconstruction", "gated_fusion", "missmodal_alignment", "self_distillation")
 PATH_KEYS = ("training_data", "inference_dir", "artifact_root", "model_cache")
 
 
@@ -155,6 +156,18 @@ def _build_model(route: str, config: dict[str, Any], sample: dict[str, Any]) -> 
             distance_coefficient=loss["missmodal_distance_coefficient"],
             geometry_coefficient=loss["missmodal_geometry_coefficient"],
             temperature=loss["missmodal_temperature"],
+            **dimensions,
+        )
+    if route == "self_distillation":
+        loss = config["loss"]
+        return SelfDistillationModel(
+            text_encoder,
+            hidden_dim=hidden_dim,
+            mmd_coefficient=loss["self_distillation_mmd_coefficient"],
+            classification_coefficient=loss["self_distillation_classification_coefficient"],
+            regression_coefficient=loss["self_distillation_regression_coefficient"],
+            temperature=loss["self_distillation_temperature"],
+            mmd_bandwidth=loss["self_distillation_mmd_bandwidth"],
             **dimensions,
         )
     raise ValueError(f"Unsupported route: {route}")

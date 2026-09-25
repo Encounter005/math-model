@@ -2,15 +2,16 @@ paths:
   training_data: E/E题数据/E题数据/附件2-数据集特征文件/aligned_50.pkl
   inference_dir: E/E题数据/E题数据/附件3-模态缺失特征样本/对齐版本
   artifact_root: artifacts/question_2/complete_view_v1
-  model_cache: .hf-cache/models--distilbert-base-uncased
+  model_cache: .hf-cache/hub/models--bert-base-uncased
 model:
   hidden_dim: 128
   entropy_temperature: 1.0
 training:
   batch_size: 32
-  epochs: 30
+  epochs: 35
   learning_rate: 0.001
-  seeds: [42, 43, 44, 45, 46]
+  # seeds: [42, 43, 44, 45, 46]
+  seeds: [42]
   mask_protocol: none
 masking:
   competition_rates: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]
