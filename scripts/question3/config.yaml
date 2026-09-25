@@ -1,0 +1,27 @@
+paths:
+  training_data: E/E题数据/E题数据/附件2-数据集特征文件/aligned_50.pkl
+  attachment4_dir: E/E题数据/E题数据/附件4-可解释专项视频样本与特征文件/附件4-可解释专项视频样本与特征文件/对齐版本
+  video_dir: E/E题数据/E题数据/附件4-可解释专项视频样本与特征文件/附件4-可解释专项视频样本与特征文件/对齐版本/videos
+  artifact_root: artifacts/question_3
+  model_cache: .hf-cache/hub/models--distilbert-base-uncased
+training:
+  batch_size: 32
+  epochs: 35
+  learning_rate: 0.001
+  seeds: [42, 43, 44, 45, 46]
+model:
+  hidden_dim: 128
+  temporal_dropout: 0.1
+loss:
+  representation_coefficient: 0.1
+  classification_coefficient: 0.2
+  regression_coefficient: 0.2
+  temperature: 1.0
+  warmup_epochs: 5
+augmentation:
+  rates: [0.1, 0.2, 0.3]
+  feature_dropout: 0.05
+explanation:
+  window_length: 5
+  window_stride: 2
+  top_k: 3
